@@ -1,0 +1,448 @@
+#!/bin/bash
+# Change root Password
+#echo "Change password for Root user"
+#passwd
+
+mkdir -p /reports
+mkdir -p /usr/local/lynis
+cd /usr/local
+wget https://downloads.cisofy.com/lynis/lynis-3.0.8.tar.gz
+tar -zxvf lynis-3.0.8.tar.gz
+cd /usr/local/lynis
+./lynis audit system > /reports/lynis-report.`date +"%Y%m%d_%H%M"`
+
+cp -p /var/log/lynis.log /reports/lynis.log.`date +"%Y%m%d_%H%M"`
+cp -p /var/log/lynis-report.dat /reports/lynis-report.dat.`date +"%Y%m%d_%H%M"`
+
+
+## CIS Audit
+cd /opt/
+curl -LO https://raw.githubusercontent.com/finalduty/cis_benchmarks_audit/main/cis_audit.py && chmod 750 cis_audit.py
+./cis_audit.py --level 1 >> /reports/cis_audit_report.`date +"%Y%m%d_%H%M"`
+
+
+## SELinux
+echo "Checking selinux"
+selinux=`sestatus`
+echo " Selinux status is $selinux "
+
+##
+echo "###################### SSH Hardening ####################################################"
+
+/bin/cp /etc/ssh/sshd_config /etc/ssh/sshd_config.orig.`date +"%Y%m%d_%H%M"`
+
+/bin/sed -e 's/^#LogLevel\ INFO/LogLevel\ INFO/' -i  /etc/ssh/sshd_config
+/bin/sed -e 's/^#Protocol 2$/Protocol 2/' -i  /etc/ssh/sshd_config
+/bin/sed -e 's/^#PermitRootLogin\ yes/PermitRootLogin\ no/' -i  /etc/ssh/sshd_config
+/bin/sed -e 's/^#MaxAuthTries\ 6/MaxAuthTries\ 3/' -i  /etc/ssh/sshd_config
+/bin/sed -e 's/^#PermitEmptyPasswords\ no/PermitEmptyPasswords\ no/' -i  /etc/ssh/sshd_config
+/bin/sed -e 's/^#ClientAliveInterval\ 0/ClientAliveInterval\ 7m/' -i  /etc/ssh/sshd_config
+/bin/sed -e 's/^#ClientAliveCountMax\ 3/ClientAliveCountMax\ 4/' -i  /etc/ssh/sshd_config
+/bin/sed -e 's/^#MaxStartups\ 10/MaxStartups\ 4/' -i  /etc/ssh/sshd_config
+/bin/sed -e 's/^LoginGraceTime\ 120/LoginGraceTime\ 2m/' -i  /etc/ssh/sshd_config
+/bin/sed -i '/^#Banner/c Banner /etc/motd' /etc/ssh/sshd_config
+
+perl -pi -e "s{#UseDNS yes}{UseDNS no}g" /etc/ssh/sshd_config
+echo "MaxAuthTries 3" >> /etc/ssh/sshd_config
+echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
+
+
+
+#########################################################################################
+
+echo "#####HISTORY TIME STAMP#######"
+
+echo "export HISTTIMEFORMAT=\"%F %T \"" >> /etc/profile
+
+
+echo "############### SSH Banner ###############################"
+/bin/cat >> /etc/motd << "EOF"
+#########################################################################
+#                   _    _           _   _                              #
+#                  / \  | | ___ _ __| |_| |                             #
+#                 / _ \ | |/ _ \ '__| __| |                             #
+#                / ___ \| |  __/ |  | |_|_|                             #
+#               /_/   \_\_|\___|_|   \__(_)                             #
+# WARNING : Unauthorized access to this system is forbidden and         #
+# will be prosecuted by law. By accessing this system, you agree        #
+# that your actions may be monitored if unauthorized usage is           #
+# suspected.                                                            #
+#  You are entering into a secured area! Your IP, Login Time,           #
+#   Username has been noted and has been sent to the server             #
+#                       administrator!                                  #
+#   This service is restricted to authorized users only. All            #
+#            activities on this system are logged.                      #
+#  Unauthorized access will be fully investigated and reported          #
+#        to the appropriate law enforcement agencies.                   #
+#########################################################################
+EOF
+
+echo "Authorized uses only. All activity may be monitored and reported." >> /etc/issue
+echo "Authorized uses only. All activity may be monitored and reported." >> /etc/issue.net
+
+
+chown root:root /etc/motd
+chmod 644 /etc/motd
+
+chown root:root /etc/issue
+chmod 644 /etc/issue
+
+chown root:root /etc/issue.net
+chmod 644 /etc/issue.net
+
+/bin/systemctl reload sshd.service
+
+
+
+echo "############# Ensure Unwanted Services are Disabled ###############################"
+
+echo "1) Disable apmd service "
+
+v2=`systemctl status apmd.service |grep -i "active"|grep -i "(running)"`
+v3=`systemctl is-enabled cups.service | grep -i "enabled"`
+
+if [ ! -z "$v2" ] || [ ! -z "$v3" ]; then
+systemctl stop apmd.service
+systemctl disable apmd.service
+
+echo "+++++++ apmd service has been disabled +++++++"
+
+else
+echo "+++++++ apmd service is not running +++++++"
+
+fi
+
+
+echo "2) Disable avahi-daemon service "
+
+v2=`systemctl status avahi-daemon.service |grep -i "active"|grep -i "(running)"`
+v3=`systemctl is-enabled avahi-daemon.service | grep -i "enabled"`
+
+if [ ! -z "$v2" ] || [ ! -z "$v3" ]; then
+
+systemctl stop avahi-daemon.service
+systemctl disable avahi-daemon.service
+
+echo "+++++++ avahi-daemon service has been disabled +++++++"
+
+else
+
+echo "+++++++ avahi-daemon service is not running +++++++"
+
+fi
+
+
+echo "3) Disable bluetooth service "
+
+v2=`systemctl status bluetooth.service |grep -i "active"|grep -i "(running)"`
+v3=`systemctl is-enabled hpoj.service | grep -i "enabled"`
+
+if [ ! -z "$v2" ] || [ ! -z "$v3" ]; then
+
+systemctl stop hpoj.service
+systemctl disable hpoj.service
+
+echo "+++++++ hpoj service has been disabled +++++++"
+
+else
+
+echo "+++++++ hpoj service is not running +++++++"
+
+fi
+
+
+echo "6) Disable lpd service "
+
+v2=`systemctl status lpd.service |grep -i "active"|grep -i "(running)"`
+v3=`systemctl is-enabled lpd.service | grep -i "enabled"`
+
+if [ ! -z "$v2" ] || [ ! -z "$v3" ]; then
+
+systemctl stop lpd.service
+systemctl disable lpd.service
+
+echo "+++++++ lpd service has been disabled +++++++"
+
+else
+
+echo "+++++++ lpd service is not running +++++++"
+
+fi
+
+
+echo "7) Disable kudzu service "
+
+v2=`systemctl status kudzu.service |grep -i "active"|grep -i "(running)"`
+v3=`systemctl is-enabled kudzu.service | grep -i "enabled"`
+
+if [ ! -z "$v2" ] || [ ! -z "$v3" ]; then
+
+systemctl stop kudzu.service
+systemctl disable kudzu.service
+
+echo "+++++++ kudzu service has been disabled +++++++"
+
+else
+
+echo "+++++++ kudzu service is not running +++++++"
+
+fi
+
+echo "############# Ensure required Services are Enabled ###############################"
+
+
+echo "1) Enable auditd service "
+
+if [ -f /usr/lib/systemd/system/auditd.service ]; then
+
+systemctl start auditd.service
+sleep 5
+systemctl enable auditd.service
+
+echo "+++++++ auditd service has been started +++++++"
+
+else
+
+echo "+++++++ auditd service is not present +++++++"
+
+echo "+++++++ Install auditd service +++++++"
+
+#yum install -y auditd
+yum install -y auditd
+
+systemctl start auditd.service
+sleep 5
+systemctl enable auditd.service
+
+echo "+++++++ auditd service has been installed and started +++++++"
+
+fi
+
+
+
+echo "2) Enable sysstat service "
+
+if [ -f /usr/lib/systemd/system/sysstat.service ]; then
+
+systemctl start sysstat.service
+sleep 5
+systemctl enable sysstat.service
+
+echo "+++++++ sysstat service has been started +++++++"
+
+else
+
+echo "+++++++ sysstat service is not present +++++++"
+
+echo "+++++++ Install sysstat service +++++++"
+
+yum install -y sysstat
+
+systemctl start sysstat.service
+sleep 5
+systemctl enable sysstat.service
+
+echo "+++++++ sysstat service has been installed and started +++++++"
+
+fi
+
+
+echo "#############  Ensure proper permissions set for log files ###############################"
+
+if [ -f /var/log/maillog ]; then
+
+chmod 600 /var/log/maillog*
+chown root:root /var/log/maillog*
+
+echo "+++++++ permission of /var/log/maillog has been set +++++++"
+
+else
+
+echo "+++++++ /var/log/maillog is not present +++++++"
+
+fi
+
+if [ -f /var/log/boot.log ]; then
+
+chmod 644 /var/log/boot.log*
+chown root:root /var/log/boot.log*
+
+echo "+++++++ permission of /var/log/boot.log has been set +++++++"
+
+else
+
+echo "+++++++ /var/log/boot.log is not present +++++++"
+
+fi
+
+if [ -f /var/log/dmesg ]; then
+
+chmod 644 /var/log/dmesg*
+chown root:root /var/log/dmesg*
+
+echo "+++++++ permission of /var/log/dmesg has been set +++++++"
+
+else
+
+echo "+++++++ /var/log/dmesg is not present +++++++"
+
+fi
+
+if [ -f /var/log/messages ]; then
+
+chmod 600 /var/log/messages*
+chown root:root /var/log/messages*
+
+echo "+++++++ permission of /var/log/messages has been set +++++++"
+
+else
+
+echo "+++++++ /var/log/messages is not present +++++++"
+
+fi
+
+if [ -f /var/log/secure ]; then
+
+chmod 600 /var/log/secure*
+chown root:root /var/log/secure*
+
+
+
+echo "+++++++ permission of /var/log/secure has been set +++++++"
+
+else
+
+echo "+++++++ /var/log/secure is not present +++++++"
+
+fi
+
+
+
+echo "############# Ensure altctrldel is disabled ###############################"
+
+v1=`systemctl status ctrl-alt-del.target|grep -i "Loaded"|grep -i "masked"`
+
+if [ ! -z "$v1" ];then
+echo " +++++++ altctrldel is already disabled +++++++ "
+else
+systemctl mask ctrl-alt-del.target
+echo " +++++++ altctrldel has been disabled +++++++ "
+fi
+
+echo "############# Ensure Unnecessary defualt users are disabled ###############################"
+
+
+if [ -f /etc/passwd ]; then
+
+/bin/cp -rpv /etc/passwd /etc/passwd_orig.`date +"%Y%m%d_%H%M"`
+
+/bin/sed -e 's/^lp/#lp/' -i /etc/passwd
+/bin/sed -e 's/^sync/#sync/' -i /etc/passwd
+/bin/sed -e 's/^shutdown/#shutdown/' -i /etc/passwd
+/bin/sed -e 's/^halt/#halt/' -i /etc/passwd
+/bin/sed -e 's/^news/#news/' -i /etc/passwd
+/bin/sed -e 's/^gopher/#gopher/' -i /etc/passwd
+/bin/sed -e 's/^operator/#operator/' -i /etc/passwd
+/bin/sed -e 's/^games/#games/' -i /etc/passwd
+/bin/sed -e 's/^uucp/#uucp/' -i /etc/passwd
+
+echo " +++++++ Unnecessary default users are disabled +++++++ "
+
+fi
+
+echo "############# Ensure Unnecessary defualt users are disabled from group ###############################"
+
+
+if [ -f /etc/group ]; then
+
+/bin/cp -rpv /etc/group /etc/group_orig.`date +"%Y%m%d_%H%M"`
+
+/bin/sed -e 's/^lp/#lp/' -i /etc/group
+/bin/sed -e 's/^gopher/#gopher/' -i /etc/group
+/bin/sed -e 's/^games/#games/' -i /etc/group
+/bin/sed -e 's/^uucp/#uucp/' -i /etc/group
+
+echo " +++++++ Unnecessary default users are disabled from group +++++++ "
+
+fi
+
+
+echo "###### Install and run Rkhunter #####"
+
+
+cd /opt
+#wget -q https://excellmedia.dl.sourceforge.net/project/rkhunter/rkhunter/1.4.4/rkhunter-1.4.4.tar.gz
+wget https://sourceforge.net/projects/rkhunter/files/latest/download/rkhunter-1.4.6.tar.gz
+tar -zxvf rkhunter-1.4.6.tar.gz
+cd rkhunter-1.4.6
+/bin/sh installer.sh --layout /usr/local --install
+/usr/local/bin/rkhunter --update
+/usr/local/bin/rkhunter --propupd
+/usr/local/bin/rkhunter -c -sk
+
+cp -p /var/log/rkhunter.log /reports/rkhunter.log.`date +"%Y%m%d_%H%M"`
+
+echo "###### Final Audit  #####"
+
+cd /usr/local/lynis
+./lynis audit system > /reports/lynis-report_after.`date +"%Y%m%d_%H%M"`
+
+cp -p /var/log/lynis.log /reports/lynis_after.log.`date +"%Y%m%d_%H%M"`
+cp -p /var/log/lynis-report.dat /reports/lynis-report_after.dat.`date +"%Y%m%d_%H%M"`
+
+
+## CIS Audit
+cd /opt/
+curl -LO https://raw.githubusercontent.com/finalduty/cis_benchmarks_audit/main/cis_audit.py && chmod 750 cis_audit.py
+./cis_audit.py --level 1 >> /reports/cis_audit_report_after.`date +"%Y%m%d_%H%M"`
+
+
+
+echo "####### Level 2 Hardening #####"
+
+# Disable Automounting
+systemctl disable autofs
+
+### Disable USB
+/bin/echo >> "install usb-storage /bin/true"  /etc/modprobe.d/usb-storage.conf
+/sbin/rmmod usb-storage
+
+
+/bin/cp /etc/sysctl.conf /etc/sysctl.conf.`date +"%Y%m%d_%H%M"`
+
+
+
+/bin/echo "net.ipv4.ip_forward=0" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.all.send_redirects = 0" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.default.send_redirects = 0" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.all.accept_redirects=0" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.default.accept_redirects=0" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.icmp_ignore_bogus_error_responses = 1" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.all.rp_filter = 1" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.default.rp_filter = 1" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.all.accept_source_route = 0" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.default.accept_source_route = 0" >> /etc/sysctl.conf
+/bin/echo "net.ipv6.conf.all.accept_source_route = 0" >> /etc/sysctl.conf
+/bin/echo "net.ipv6.conf.default.accept_source_route = 0" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.icmp_echo_ignore_broadcasts = 1" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.all.log_martians = 1" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.conf.default.log_martians = 1" >> /etc/sysctl.conf
+/bin/echo "net.ipv4.route.flush=1" >> /etc/sysctl.conf
+
+
+/bin/chown root:root /etc/anacrontab
+/bin/chmod og-rwx /etc/anacrontab
+/bin/chown root:root /etc/crontab
+/bin/chmod og-rwx /etc/crontab
+/bin/chown root:root /etc/cron.hourly
+/bin/chmod og-rwx /etc/cron.hourly
+/bin/chown root:root /etc/cron.daily
+/bin/chmod og-rwx /etc/cron.daily
+/bin/chown root:root /etc/cron.weekly
+/bin/chmod og-rwx /etc/cron.weekly
+/bin/chown root:root /etc/cron.monthly
+/bin/chmod og-rwx /etc/cron.monthly
+/bin/chown root:root /etc/cron.d
+/bin/chmod og-rwx /etc/cron.d
+
+echo "########### Completed ################################################################"
